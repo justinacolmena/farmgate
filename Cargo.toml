@@ -1,0 +1,13 @@
+[package]
+name = "farmgate"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dotenvy = "0.15.6"
+comrak = "0.15.0"
+bbscope = "0.0.6"
+rocket = { version = "0.5.0-rc.2", features = ["secrets"] }
+rocket-session-store = "0.2.0"
