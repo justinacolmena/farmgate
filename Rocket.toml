@@ -1,0 +1,18 @@
+[debug]
+address = "127.0.0.1"
+port = 8000
+workers = 5
+keep_alive = 5
+log_level = "debug"
+secret_key = "+wiJWUqwtgEIUgZ5hJgjwkRZhxW+D58T2jWpuPEAM28="
+limits = { forms = 32768 }
+
+[release]
+address = "0.0.0.0"
+port = 8000
+workers = 5
+keep_alive = 5
+log_level = "normal"
+secret_key = "+wiJWUqwtgEIUgZ5hJgjwkRZhxW+D58T2jWpuPEAM28="
+limits = { forms = 32768 }
+
