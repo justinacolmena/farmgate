@@ -1,30 +1,19 @@
-use rocket::{
-	Rocket,
-	get,
-	routes,
-	launch,
-};
+use rocket::{Rocket, get, routes, launch};
+use rocket::tokio::time::{sleep, Duration};
+use rocket::response::content;
 
-use rocket_session_store::{
-	memory::MemoryStore,
-	SessionStore,
-	SessionResult,
-	Session,
-	CookieConfig,
-};
-
+use rand::prelude::*;
+use rand::{Rng, thread_rng};
+use rand::distributions::{Alphanumeric, DistString};
+use rocket_session_store::{memory::MemoryStore, SessionStore,
+	SessionResult, Session, CookieConfig};
 
 use dotenvy::dotenv;
 use std::env;
-use rand::prelude::*;
+use tokio_postgres::{NoTls, Error};
 
-
-use rocket::tokio::time::{sleep, Duration};
-use rocket::response::content;
 use comrak::{markdown_to_html, ComrakOptions};
 use bbscope::BBCode;
-
-
 
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
@@ -33,7 +22,7 @@ async fn main() -> Result<(), rocket::Error> {
 	let store: SessionStore<String> = SessionStore {
 		store: Box::new(memory_store),
 		name: "token".into(),
-		duration: Duration::from_secs(3600 * 24 * 3),
+		duration: Duration::from_secs(3600),
 		// The cookie config is used to set the cookie's path and other options.
 		cookie: CookieConfig::default(),
 	};
@@ -51,7 +40,8 @@ async fn index(session: Session<'_, String>) -> SessionResult<String> {
 	if let Some(name) = name {
 		Ok(format!("Hello, {}!", name))
 	} else {
-		session.set(format!("justina")).await?;
+		let name = Alphanumeric.sample_string(&mut rand::thread_rng(), 16);
+		session.set(name).await?;
 		Ok("Hello, world!".into())
 	}
 }

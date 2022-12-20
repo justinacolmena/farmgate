@@ -12,3 +12,4 @@ bbscope = "0.0.6"
 rocket = { version = "0.5.0-rc.2", features = ["secrets"] }
 rand = "0.8.5"
 rocket-session-store = "0.2.0"
+tokio-postgres = "0.7.7"
