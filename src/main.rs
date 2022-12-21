@@ -10,6 +10,8 @@ use rocket_session_store::{memory::MemoryStore, SessionStore,
 
 use dotenvy::dotenv;
 use std::env;
+use tokio::net::TcpListener;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_postgres::{NoTls, Error};
 
 use comrak::{markdown_to_html, ComrakOptions};
@@ -35,14 +37,32 @@ async fn main() -> Result<(), rocket::Error> {
 }
 
 #[get("/")]
-async fn index(session: Session<'_, String>) -> SessionResult<String> {
+async fn index(session: Session<'_, String>) -> SessionResult<content::RawHtml<String>> {
+
 	let name: Option<String> = session.get().await?;
 	if let Some(name) = name {
-		Ok(format!("Hello, {}!", name))
-	} else {
-		let name = Alphanumeric.sample_string(&mut rand::thread_rng(), 16);
 		session.set(name).await?;
-		Ok("Hello, world!".into())
+	} else {
+		let name = Alphanumeric.sample_string(&mut rand::thread_rng(), 52);
+		session.set(name).await?;
 	}
+	let database_url = dotenvy::var("DATABASE_URL")
+		.or(std::env::var("DATABASE_URL"))
+		.or(Ok::<String,Error>("localhost".to_string())).unwrap();
+
+	let Ok((client, connection)) = tokio_postgres::connect(&database_url, NoTls).await
+	else {return Ok(content::RawHtml("database connection failed".to_string()))};
+	tokio::spawn(async move {
+		if let Err(e) = connection.await {
+			eprintln!("connection error: {}", e);
+		}
+	});
+	let Ok(rows) = client
+        .query("SELECT $1::TEXT, NOW()::TEXT", &[&"hello world"])
+        .await
+	else {return Ok(content::RawHtml("database query failed".to_string()))};
+
+	// panics if rows[].get() aren't the right type
+    Ok(content::RawHtml(format!("{} {}", rows[0].get::<usize, String>(0), rows[0].get::<usize, String>(1))))
 }
 
