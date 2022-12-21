@@ -46,6 +46,7 @@ async fn index(session: Session<'_, String>) -> SessionResult<content::RawHtml<S
 		let name = Alphanumeric.sample_string(&mut rand::thread_rng(), 52);
 		session.set(name).await?;
 	}
+
 	let database_url = dotenvy::var("DATABASE_URL")
 		.or(std::env::var("DATABASE_URL"))
 		.or(Ok::<String,Error>("localhost".to_string())).unwrap();
@@ -63,6 +64,7 @@ async fn index(session: Session<'_, String>) -> SessionResult<content::RawHtml<S
 	else {return Ok(content::RawHtml("database query failed".to_string()))};
 
 	// panics if rows[].get() aren't the right type
-    Ok(content::RawHtml(format!("{} {}", rows[0].get::<usize, String>(0), rows[0].get::<usize, String>(1))))
+    Ok(content::RawHtml(format!("{}<br>{} {}", session.get().await.unwrap().unwrap(),
+		rows[0].get::<usize, String>(0), rows[0].get::<usize, String>(1))))
 }
 
