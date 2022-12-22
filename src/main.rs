@@ -37,15 +37,19 @@ async fn main() -> Result<(), rocket::Error> {
 }
 
 #[get("/")]
-async fn index(session: Session<'_, String>) -> SessionResult<content::RawHtml<String>> {
+async fn index(session: Session<'_, String>)
+		-> SessionResult<content::RawHtml<String>> {
 
-	let name: Option<String> = session.get().await?;
-	if let Some(name) = name {
-		session.set(name).await?;
-	} else {
-		let name = Alphanumeric.sample_string(&mut rand::thread_rng(), 52);
-		session.set(name).await?;
-	}
+	let session_id: String = session.get().await
+		.unwrap_or_default()
+		.and_then(|name| if name.len() == 54
+			&& name.starts_with("jK")
+			&& name.bytes().all(|x| x.is_ascii_alphanumeric())
+			{Some(name)} else {None})
+		.unwrap_or("jK".to_string()
+		+ &Alphanumeric.sample_string(&mut rand::thread_rng(), 52));
+	session.set(session_id).await?;
+
 
 	let database_url = dotenvy::var("DATABASE_URL")
 		.or(std::env::var("DATABASE_URL"))
@@ -53,6 +57,7 @@ async fn index(session: Session<'_, String>) -> SessionResult<content::RawHtml<S
 
 	let Ok((client, connection)) = tokio_postgres::connect(&database_url, NoTls).await
 	else {return Ok(content::RawHtml("database connection failed".to_string()))};
+
 	tokio::spawn(async move {
 		if let Err(e) = connection.await {
 			eprintln!("connection error: {}", e);
