@@ -28,17 +28,22 @@ async fn main() -> Result<(), rocket::Error> {
 	Ok(())
 }
 
-#[get("/")]
-async fn index(session: Session<'_, String>)
-			-> SessionResult<(Status, (ContentType, String))> {
+async fn session_init(session: Session<'_, String>) -> SessionResult<String>
+{
 	let session_id: String = session.get().await.unwrap_or_default()
 		.and_then(|name| if name.len() == 54 && name.bytes()
 		.all(|x| x.is_ascii_alphanumeric()) {Some(name)} else {None})
 		.unwrap_or(Alphanumeric.sample_string(&mut rand::thread_rng(), 54));
-	session.set(session_id.clone()).await?;
+	session.set(session_id.clone()).await.and_then(|()|Ok(session_id))
+}
+
+#[get("/")]
+async fn index(session: Session<'_, String>)
+			-> SessionResult<(Status, (ContentType, String))> {
+	let session_id: String = session_init(session).await?;
 
 	let database_url = std::env::var("DATABASE_URL")
-		.unwrap_or("localhost".to_string());
+		.unwrap_or("postgres://localhost".to_string());
 
 	let mut database_error = "".to_string();
 	let Ok((client, connection))
@@ -50,8 +55,7 @@ async fn index(session: Session<'_, String>)
 
 	tokio::spawn(async move {
 		if let Err(e) = connection.await {
-			eprintln!("connection error: {}", e);
-		}});
+			eprintln!("connection error: {}", e); }});
 
 	let Ok(rows) = client
         .query("SELECT $1::TEXT, $2::TEXT, NOW()::TEXT",
