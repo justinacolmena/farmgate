@@ -33,7 +33,7 @@ async fn session_init(session: Session<'_, String>) -> SessionResult<String>
 	let session_id: String = session.get().await.unwrap_or_default()
 		.and_then(|name| if name.len() == 54 && name.bytes()
 		.all(|x| x.is_ascii_alphanumeric()) {Some(name)} else {None})
-		.unwrap_or(Alphanumeric.sample_string(&mut rand::thread_rng(), 54));
+		.unwrap_or_else(||Alphanumeric.sample_string(&mut rand::thread_rng(), 54));
 	session.set(session_id.clone()).await.and_then(|()|Ok(session_id))
 }
 
