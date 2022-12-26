@@ -27,9 +27,7 @@ async fn main() -> Result<(), rocket::Error> {
 		cookie: CookieConfig::default(),
 	};
 	let _rocket = rocket::build().attach(store.fairing())
-		.mount("/", routes![index])
-		.launch()
-		.await?;
+		.mount("/", routes![index]).launch().await?;
 	Ok(())
 }
 
@@ -48,7 +46,7 @@ async fn index(session: Session<'_, String>)
 	let session_id: String = session_init(session).await?;
 
 	let database_url = std::env::var("DATABASE_URL")
-		.unwrap_or("postgres://localhost".to_string());
+		.unwrap_or("postgresql://localhost".to_string());
 
 	let mut database_error = "".to_string();
 	let Ok((client, connection))
@@ -60,7 +58,7 @@ async fn index(session: Session<'_, String>)
 
 	tokio::spawn(async move {
 		if let Err(e) = connection.await {
-			eprintln!("connection error: {}", e); }});
+			eprintln!("database connection error: {}", e); }});
 
 	let Ok(rows) = client
         .query("SELECT $1, $2, $3, NOW()",
@@ -68,12 +66,22 @@ async fn index(session: Session<'_, String>)
 	.or_else(|e: tokio_postgres::error::Error|
 			{database_error += &e.to_string(); Err(e)})
 	else {return Ok((Status::new(500), (ContentType::Plain,
-		format!("database connection failed: {}", database_error))))};
+		format!("database query failed: {}", database_error))))};
 
-	// panics if rows[].get() aren't the right type
-    Ok((Status::Ok,(ContentType::HTML, format!("{}<br>{} {} {}",
-		rows[0].get::<usize,String>(0), rows[0].get::<usize,String>(1), rows[0].get::<usize,String>(2),
-	    DateTime::<Utc>::from(rows[0].get::<usize,SystemTime>(3))
-	))))
+	// use non-panic method & trap errors with "?" operator inside closure
+    (|rows:Vec<tokio_postgres::row::Row>| {
+		let mut r : String = "".to_string();
+		for row in rows {
+			r += &format!("{}\n{} {} {}\n",
+				row.try_get::<usize,String>(0)?,
+				row.try_get::<usize,String>(1)?,
+				row.try_get::<usize,String>(2)?,
+				DateTime::<Utc>::from(row.try_get::<usize,SystemTime>(3)?)
+			)}
+		Ok((Status::Ok,(ContentType::Plain, r)))
+	})(rows) // call the closure on "rows" returned from database
+	.or_else(|e: tokio_postgres::error::Error|
+		Ok((Status::new(500), (ContentType::Plain,
+		format!("failed to get results from database query: {}",
+			&e.to_string())))))
 }
-
