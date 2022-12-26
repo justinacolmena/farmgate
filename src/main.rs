@@ -1,11 +1,16 @@
 use dotenvy::dotenv;
 use rand::distributions::{Alphanumeric, DistString};
+use std::time::SystemTime;
+use chrono::DateTime;
+use chrono::offset::{Utc};
 use rocket::{get, routes};
-use rocket::tokio::time::{Duration};
 use rocket::http::{Status, ContentType};
 use rocket_session_store::{memory::MemoryStore, SessionStore,
 	SessionResult, Session, CookieConfig};
 use tokio_postgres::{NoTls};
+
+#[cfg(feature = "derive")]
+use postgres_types::{ToSql, FromSql};
 
 // use comrak::{markdown_to_html, ComrakOptions};
 // use bbscope::BBCode;
@@ -18,7 +23,7 @@ async fn main() -> Result<(), rocket::Error> {
 	let store: SessionStore<String> = SessionStore {
 		store: Box::new(memory_store),
 		name: "token".into(),
-		duration: Duration::from_secs(3600),
+		duration: tokio::time::Duration::from_secs(3600),
 		cookie: CookieConfig::default(),
 	};
 	let _rocket = rocket::build().attach(store.fairing())
@@ -58,16 +63,17 @@ async fn index(session: Session<'_, String>)
 			eprintln!("connection error: {}", e); }});
 
 	let Ok(rows) = client
-        .query("SELECT $1::TEXT, $2::TEXT, NOW()::TEXT",
-			&[&&session_id, &"hello world"]).await
+        .query("SELECT $1, $2, $3, NOW()",
+			&[&&session_id, &"hello", &"world"]).await
 	.or_else(|e: tokio_postgres::error::Error|
 			{database_error += &e.to_string(); Err(e)})
 	else {return Ok((Status::new(500), (ContentType::Plain,
 		format!("database connection failed: {}", database_error))))};
 
 	// panics if rows[].get() aren't the right type
-    Ok((Status::Ok,(ContentType::HTML, format!("{}<br>{} {}",
-		rows[0].get::<usize, String>(0), rows[0].get::<usize, String>(1),
-			rows[0].get::<usize, String>(2)))))
+    Ok((Status::Ok,(ContentType::HTML, format!("{}<br>{} {} {}",
+		rows[0].get::<usize,String>(0), rows[0].get::<usize,String>(1), rows[0].get::<usize,String>(2),
+	    DateTime::<Utc>::from(rows[0].get::<usize,SystemTime>(3))
+	))))
 }
 
