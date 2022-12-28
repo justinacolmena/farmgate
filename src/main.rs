@@ -91,6 +91,7 @@ async fn index(session: Session<'_, String>)
 			&e.to_string())))))
 }
 
+/// https://github.com/SergioBenitez/Rocket/discussions/2041#discussion-3770847
 struct RequestHeaders<'h>(&'h HeaderMap<'h>);
 
 #[rocket::async_trait]
