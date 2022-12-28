@@ -5,7 +5,7 @@ use std::convert::Infallible;
 use chrono::DateTime;
 use chrono::offset::{Utc};
 use rocket::{get, routes, Request, request, Response, response};
-use rocket::http::{Status, ContentType, HeaderMap, StatusClass::Success};
+use rocket::http::{Header, Status, ContentType, HeaderMap, StatusClass::Success};
 use rocket::request::{FromRequest, Outcome};
 use rocket::response::Responder;
 use rocket_session_store::{memory::MemoryStore, SessionStore,
@@ -103,11 +103,26 @@ impl<'r> FromRequest<'r> for RequestHeaders<'r> {
     }
 }
 
+/// https://www.reddit.com/r/rust/comments/oy37e5/comment/h7s7w62/
+#[derive(Responder)]
+struct MyResponder<T> {
+    inner: T,
+    my_header: Header<'static>,
+}
+impl<'r, 'o: 'r, T: Responder<'r, 'o>> MyResponder<T> {
+    fn new(inner: T, header_value: String) -> Self {
+        MyResponder {
+            inner,
+            my_header: Header::new("framework", header_value),
+        }
+    }
+}
+
 #[get("/login")]
 async fn login(session: Session<'_, String>, request_headers: RequestHeaders<'_>)
-			-> SessionResult<(Status, (ContentType, String))> {
+			-> SessionResult<MyResponder<(Status, (ContentType, String))> > {
 	let session_id: String = session_init(session).await?;
-	Ok((Status::Ok,(ContentType::Plain,
-		format!("{}\nYou have reached the login page for your session.\n",
-			session_id))))
+	let content = format!("{}\nYou have reached the login page for your session.\n",
+			session_id);
+	Ok(MyResponder::new((Status::Ok,(ContentType::HTML, content)), "myself".to_string()))
 }
