@@ -1,13 +1,17 @@
 use dotenvy::dotenv;
 use rand::distributions::{Alphanumeric, DistString};
 use std::time::SystemTime;
+use std::convert::Infallible;
 use chrono::DateTime;
 use chrono::offset::{Utc};
-use rocket::{get, routes};
-use rocket::http::{Status, ContentType};
+use rocket::{get, routes, Request, request, Response, response};
+use rocket::http::{Status, ContentType, HeaderMap, StatusClass::Success};
+use rocket::request::{FromRequest, Outcome};
+use rocket::response::Responder;
 use rocket_session_store::{memory::MemoryStore, SessionStore,
 	SessionResult, Session, CookieConfig};
 use tokio_postgres::{NoTls};
+
 
 #[cfg(feature = "derive")]
 use postgres_types::{ToSql, FromSql};
@@ -27,7 +31,7 @@ async fn main() -> Result<(), rocket::Error> {
 		cookie: CookieConfig::default(),
 	};
 	let _rocket = rocket::build().attach(store.fairing())
-		.mount("/", routes![index]).launch().await?;
+		.mount("/", routes![index,login]).launch().await?;
 	Ok(())
 }
 
@@ -39,6 +43,7 @@ async fn session_init(session: Session<'_, String>) -> SessionResult<String>
 		.unwrap_or_else(||Alphanumeric.sample_string(&mut rand::thread_rng(), 54));
 	session.set(session_id.clone()).await.and_then(|()|Ok(session_id))
 }
+
 
 #[get("/")]
 async fn index(session: Session<'_, String>)
@@ -69,7 +74,7 @@ async fn index(session: Session<'_, String>)
 		format!("database query failed: {}", database_error))))};
 
 	// use non-panic method & trap errors with "?" operator inside closure
-    (|rows:Vec<tokio_postgres::row::Row>| {
+    (move |rows:Vec<tokio_postgres::row::Row>| {
 		let mut r : String = "".to_string();
 		for row in rows {
 			r += &format!("{}\n{} {} {}\n",
@@ -84,4 +89,24 @@ async fn index(session: Session<'_, String>)
 		Ok((Status::new(500), (ContentType::Plain,
 		format!("failed to get results from database query: {}",
 			&e.to_string())))))
+}
+
+struct RequestHeaders<'h>(&'h HeaderMap<'h>);
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for RequestHeaders<'r> {
+    type Error = Infallible;
+    async fn from_request(request: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
+        let request_headers = request.headers();
+        Outcome::Success(RequestHeaders(request_headers))
+    }
+}
+
+#[get("/login")]
+async fn login(session: Session<'_, String>, request_headers: RequestHeaders<'_>)
+			-> SessionResult<(Status, (ContentType, String))> {
+	let session_id: String = session_init(session).await?;
+	Ok((Status::Ok,(ContentType::Plain,
+		format!("{}\nYou have reached the login page for your session.\n",
+			session_id))))
 }
