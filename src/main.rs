@@ -77,13 +77,14 @@ async fn index(session: Session<'_, String>)
     (move |rows:Vec<tokio_postgres::row::Row>| {
 		let mut r : String = "".to_string();
 		for row in rows {
-			r += &format!("{}\n{} {} {}\n",
+			r += &format!("{}<br>\n{} {} {}<br>\n<a href=\"/login\">login</a> \
+			with username “aladdin” and password “opensesame”",
 				row.try_get::<usize,String>(0)?,
 				row.try_get::<usize,String>(1)?,
 				row.try_get::<usize,String>(2)?,
 				DateTime::<Utc>::from(row.try_get::<usize,SystemTime>(3)?)
 			)}
-		Ok((Status::Ok,(ContentType::Plain, r)))
+		Ok((Status::Ok,(ContentType::HTML, r)))
 	})(rows) // call the closure on "rows" returned from database
 	.or_else(|e: tokio_postgres::error::Error|
 		Ok((Status::new(500), (ContentType::Plain,
@@ -92,37 +93,56 @@ async fn index(session: Session<'_, String>)
 }
 
 /// https://github.com/SergioBenitez/Rocket/discussions/2041#discussion-3770847
-struct RequestHeaders<'h>(&'h HeaderMap<'h>);
+struct HttpRequestHeaders<'h>(&'h HeaderMap<'h>);
 
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for RequestHeaders<'r> {
+impl<'r> FromRequest<'r> for HttpRequestHeaders<'r> {
     type Error = Infallible;
-    async fn from_request(request: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
-        let request_headers = request.headers();
-        Outcome::Success(RequestHeaders(request_headers))
+    async fn from_request(http_request: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
+        let http_request_headers = http_request.headers();
+        Outcome::Success(HttpRequestHeaders(http_request_headers))
     }
 }
 
 /// https://www.reddit.com/r/rust/comments/oy37e5/comment/h7s7w62/
+/// https://rocket.rs/v0.5-rc/guide/responses/#custom-responders
 #[derive(Responder)]
 struct MyResponder<T> {
     inner: T,
     my_header: Header<'static>,
 }
+
 impl<'r, 'o: 'r, T: Responder<'r, 'o>> MyResponder<T> {
-    fn new(inner: T, header_value: String) -> Self {
+    fn new(inner: T, header_key: &'static str, header_value: &'static str) -> Self {
         MyResponder {
             inner,
-            my_header: Header::new("framework", header_value),
+            my_header: Header::new(header_key, header_value),
         }
     }
 }
 
+/// The "/login" page has no content of its own. This preliminary version implements
+/// RFC 7617 Basic Authentication for login with username "aladdin" and password
+/// "opensesame". If successful, the user is redirected to the home page "/".
+///
+/// The plan is to implement RFC 7616 Digest Access Authentication with the "domain"
+/// parameter restricted to "/login" and rely on rocket-session-store and the database
+/// to manage sessions and carry user authentication over to the rest of the website.
+
 #[get("/login")]
-async fn login(session: Session<'_, String>, request_headers: RequestHeaders<'_>)
-			-> SessionResult<MyResponder<(Status, (ContentType, String))> > {
+async fn login(session: Session<'_, String>, http_request_headers: HttpRequestHeaders<'_>)
+			-> SessionResult<MyResponder<(Status, ())> > {
 	let session_id: String = session_init(session).await?;
-	let content = format!("{}\nYou have reached the login page for your session.\n",
-			session_id);
-	Ok(MyResponder::new((Status::Ok,(ContentType::HTML, content)), "myself".to_string()))
+
+	let auth = http_request_headers.0.get_one("Authorization").unwrap_or_default();
+	let user_pass_vu8 = base64::decode(&auth[6..]).unwrap_or_default();
+	let user_pass_str =  std::str::from_utf8(&user_pass_vu8).expect("username:password");
+
+	if auth.starts_with("Basic ") && user_pass_str == "aladdin:opensesame" {
+		Ok(MyResponder::new((Status::TemporaryRedirect, ()), "Location", "/"))
+	}
+		else {
+		Ok(MyResponder::new((Status::Unauthorized, ()),
+								 "WWW-Authenticate", "Basic realm=\"login\", charset=\"UTF-8\""))
+	}
 }

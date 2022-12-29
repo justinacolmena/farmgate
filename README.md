@@ -17,7 +17,7 @@ $ head -c32 /dev/random | base64
 ```
 # TO DO:
  * session support (done!)
- * login page with 401 Digest Auth and 307 redirect to referer if local
+ * login page with 401 Digest Auth and 307 redirect to referer if local (works with Basic auth!)
  * simple tables in database for Sessions, Users, & Content
  * pages for signup, logout, user preferences, profile
  * actions for view, edit, post, update, history, delete
