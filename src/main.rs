@@ -77,7 +77,7 @@ async fn index(session: Session<'_, String>)
     (move |rows:Vec<tokio_postgres::row::Row>| {
 		let mut r : String = "".to_string();
 		for row in rows {
-			r += &format!("{}<br>\n{} {} {}<br>\n<a href=\"/login\">login</a> \
+			r += &format!("{}<br>\n{} {} {}<br>\n<a href=\"/auth/login\">login</a> \
 			with username “aladdin” and password “opensesame”",
 				row.try_get::<usize,String>(0)?,
 				row.try_get::<usize,String>(1)?,
@@ -121,24 +121,26 @@ impl<'r, 'o: 'r, T: Responder<'r, 'o>> MyResponder<T> {
     }
 }
 
-/// The "/login" page has no content of its own. This preliminary version implements
+/// The "/auth/login" page has no content of its own. This preliminary version implements
 /// RFC 7617 Basic Authentication for login with username "aladdin" and password
 /// "opensesame". If successful, the user is redirected to the home page "/".
 ///
 /// The plan is to implement RFC 7616 Digest Access Authentication with the "domain"
-/// parameter restricted to "/login" and rely on rocket-session-store and the database
+/// parameter restricted to "/auth/*" and rely on rocket-session-store and the database
 /// to manage sessions and carry user authentication over to the rest of the website.
 
-#[get("/login")]
+#[get("/auth/login")]
 async fn login(session: Session<'_, String>, http_request_headers: HttpRequestHeaders<'_>)
 			-> SessionResult<MyResponder<(Status, ())> > {
 	let session_id: String = session_init(session).await?;
 
-	let auth = http_request_headers.0.get_one("Authorization").unwrap_or_default();
-	let user_pass_vu8 = base64::decode(&auth[6..]).unwrap_or_default();
+	let auth = http_request_headers.0.get_one("Authorization").unwrap_or("");
+    let auth64 = if auth.len() > 6 && auth.starts_with("Basic") { auth[5..].trim() } else {""};
+    let user_pass_vu8 = base64::decode(&auth64).unwrap_or_default();
 	let user_pass_str =  std::str::from_utf8(&user_pass_vu8).expect("username:password");
 
-	if auth.starts_with("Basic ") && user_pass_str == "aladdin:opensesame" {
+	if user_pass_str == "aladdin:opensesame" {
+
 		Ok(MyResponder::new((Status::TemporaryRedirect, ()), "Location", "/"))
 	}
 		else {
