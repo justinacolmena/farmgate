@@ -2,22 +2,19 @@ use dotenvy::dotenv;
 use rand::distributions::{Alphanumeric, DistString};
 use std::time::SystemTime;
 use std::convert::Infallible;
-use chrono::DateTime;
-use chrono::offset::{Utc};
-use rocket::{get, routes, Request, request, Response, response};
-use rocket::http::{Header, Status, ContentType, HeaderMap, StatusClass::Success};
+use chrono::{DateTime, offset};
+use rocket::{get, routes, Request};
+use rocket::http::{Header, Status, ContentType, HeaderMap};
 use rocket::request::{FromRequest, Outcome};
 use rocket::response::Responder;
 use rocket_session_store::{memory::MemoryStore, SessionStore,
 	SessionResult, Session, CookieConfig};
-use tokio_postgres::{NoTls};
-
+use rocket_db_pools::{deadpool_postgres, Database, Connection};
 
 #[cfg(feature = "derive")]
 use postgres_types::{ToSql, FromSql};
 // use comrak::{markdown_to_html, ComrakOptions};
 // use bbscope::BBCode;
-use rocket_db_pools::{deadpool_postgres, Database, Connection};
 
 #[derive(Database)]
 #[database("farmgate")]
@@ -76,7 +73,7 @@ async fn index(session: Session<'_, String>, db: Connection<Db>,
 				row.try_get::<usize,String>(0)?,
 				row.try_get::<usize,String>(1)?,
 				row.try_get::<usize,String>(2)?,
-				DateTime::<Utc>::from(row.try_get::<usize,SystemTime>(3)?)
+				DateTime::<offset::Utc>::from(row.try_get::<usize,SystemTime>(3)?)
 			)}
 		Ok((Status::Ok,(ContentType::HTML, r)))
 	})(rows) // call the closure on "rows" returned from database
@@ -92,7 +89,7 @@ struct HttpRequestHeaders<'h>(&'h HeaderMap<'h>);
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for HttpRequestHeaders<'r> {
     type Error = Infallible;
-    async fn from_request(http_request: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
+    async fn from_request(http_request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let http_request_headers = http_request.headers();
         Outcome::Success(HttpRequestHeaders(http_request_headers))
     }
