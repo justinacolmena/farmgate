@@ -1,16 +1,16 @@
 # farmgate
 A CMS with user auth, blog, wiki, and discussion to run on PostgreSQL
 
-Configure `DATABASE_URL` and `ROCKET_SECRET_KEY` in the file `./.env`
+Configure `ROCKET_SECRET_KEY` and `ROCKET_DATABASES` in the file `./.env`
 
 **.env**
 
 ```
-DATABASE_URL = postgres://username:password@localhost/somedatabase
 ROCKET_SECRET_KEY = qjsVtkPNv7903JcCwbSxNl68cMT9F8D6h834RoDNSSI=
+ROCKET_DATABASES = '{farmgate={url="postgres://user:password@localhost/database",idle_timeout=120}}'
 ```
 The variable `ROCKET_SECRET_KEY` may be set to the output of the
-following command to generate a new secret key
+following command to generate a new secret key for encrypting session cookies
 
 ```
 $ head -c32 /dev/random | base64

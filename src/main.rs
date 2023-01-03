@@ -15,9 +15,13 @@ use tokio_postgres::{NoTls};
 
 #[cfg(feature = "derive")]
 use postgres_types::{ToSql, FromSql};
-
 // use comrak::{markdown_to_html, ComrakOptions};
 // use bbscope::BBCode;
+use rocket_db_pools::{deadpool_postgres, Database, Connection};
+
+#[derive(Database)]
+#[database("farmgate")]
+struct Db(deadpool_postgres::Pool);
 
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
@@ -30,8 +34,11 @@ async fn main() -> Result<(), rocket::Error> {
 		duration: tokio::time::Duration::from_secs(3600),
 		cookie: CookieConfig::default(),
 	};
-	let _rocket = rocket::build().attach(store.fairing())
-		.mount("/", routes![index,login]).launch().await?;
+	let _rocket = rocket::build()
+		.attach(store.fairing())
+		.attach(Db::init())
+		.mount("/", routes![index,login])
+		.launch().await?;
 	Ok(())
 }
 
@@ -46,26 +53,13 @@ async fn session_init(session: Session<'_, String>) -> SessionResult<String>
 
 
 #[get("/")]
-async fn index(session: Session<'_, String>)
-			-> SessionResult<(Status, (ContentType, String))> {
+async fn index(session: Session<'_, String>, db: Connection<Db>,
+			   http_request_headers: HttpRequestHeaders<'_>)
+		-> SessionResult<(Status, (ContentType, String))> {
 	let session_id: String = session_init(session).await?;
+	let mut database_error = String::new();
 
-	let database_url = std::env::var("DATABASE_URL")
-		.unwrap_or("postgresql://localhost".to_string());
-
-	let mut database_error = "".to_string();
-	let Ok((client, connection))
-		= tokio_postgres::connect(&database_url, NoTls).await
-		.or_else(|e: tokio_postgres::error::Error|
-			{database_error += &e.to_string(); Err(e)})
-	else {return Ok((Status::new(500), (ContentType::Plain,
-		format!("database connection failed: {}", database_error))))};
-
-	tokio::spawn(async move {
-		if let Err(e) = connection.await {
-			eprintln!("database connection error: {}", e); }});
-
-	let Ok(rows) = client
+	let Ok(rows) = db
         .query("SELECT $1, $2, $3, NOW()",
 			&[&&session_id, &"hello", &"world"]).await
 	.or_else(|e: tokio_postgres::error::Error|
@@ -130,8 +124,9 @@ impl<'r, 'o: 'r, T: Responder<'r, 'o>> MyResponder<T> {
 /// to manage sessions and carry user authentication over to the rest of the website.
 
 #[get("/auth/login")]
-async fn login(session: Session<'_, String>, http_request_headers: HttpRequestHeaders<'_>)
-			-> SessionResult<MyResponder<(Status, ())> > {
+async fn login(session: Session<'_, String>, db: Connection<Db>,
+			   http_request_headers: HttpRequestHeaders<'_>)
+		-> SessionResult<MyResponder<(Status, ())> > {
 	let session_id: String = session_init(session).await?;
 
 	let auth = http_request_headers.0.get_one("Authorization").unwrap_or("");
