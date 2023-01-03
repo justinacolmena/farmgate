@@ -11,14 +11,16 @@ use rocket_session_store::{memory::MemoryStore, SessionStore,
 	SessionResult, Session, CookieConfig};
 use rocket_db_pools::{deadpool_postgres, Database, Connection};
 
+#[derive(Database)]
+#[database("PostgreSQL")]
+struct Db(deadpool_postgres::Pool);
+
 #[cfg(feature = "derive")]
 use postgres_types::{ToSql, FromSql};
 // use comrak::{markdown_to_html, ComrakOptions};
 // use bbscope::BBCode;
 
-#[derive(Database)]
-#[database("farmgate")]
-struct Db(deadpool_postgres::Pool);
+
 
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
@@ -34,7 +36,7 @@ async fn main() -> Result<(), rocket::Error> {
 	let _rocket = rocket::build()
 		.attach(store.fairing())
 		.attach(Db::init())
-		.mount("/", routes![index,login])
+		.mount("/", routes![index,login_auth])
 		.launch().await?;
 	Ok(())
 }
@@ -65,25 +67,25 @@ async fn index(session: Session<'_, String>, db: Connection<Db>,
 		format!("database query failed: {}", database_error))))};
 
 	// use non-panic method & trap errors with "?" operator inside closure
-    (move |rows:Vec<tokio_postgres::row::Row>| {
-		let mut r : String = "".to_string();
+    (move |rows:Vec<tokio_postgres::row::Row>| async move {
+		let mut r = String::new();
 		for row in rows {
-			r += &format!("{}<br>\n{} {} {}<br>\n<a href=\"/auth/login\">login</a> \
-			with username “aladdin” and password “opensesame”",
-				row.try_get::<usize,String>(0)?,
-				row.try_get::<usize,String>(1)?,
-				row.try_get::<usize,String>(2)?,
-				DateTime::<offset::Utc>::from(row.try_get::<usize,SystemTime>(3)?)
+			r += &format!("{}<br>\n{} {} {}<br>\n<a href=\"/login/auth\">login</a>: \
+			try username “aladdin” with password “opensesame”",
+				row.try_get::<_,String>(0)?,
+				row.try_get::<_,String>(1)?,
+				row.try_get::<_,String>(2)?,
+				DateTime::<offset::Utc>::from(row.try_get::<_,SystemTime>(3)?)
 			)}
 		Ok((Status::Ok,(ContentType::HTML, r)))
-	})(rows) // call the closure on "rows" returned from database
+	})(rows).await // call the closure on "rows" returned from database
 	.or_else(|e: tokio_postgres::error::Error|
 		Ok((Status::new(500), (ContentType::Plain,
 		format!("failed to get results from database query: {}",
 			&e.to_string())))))
 }
 
-/// https://github.com/SergioBenitez/Rocket/discussions/2041#discussion-3770847
+// https://github.com/SergioBenitez/Rocket/discussions/2041#discussion-3770847
 struct HttpRequestHeaders<'h>(&'h HeaderMap<'h>);
 
 #[rocket::async_trait]
@@ -95,8 +97,8 @@ impl<'r> FromRequest<'r> for HttpRequestHeaders<'r> {
     }
 }
 
-/// https://www.reddit.com/r/rust/comments/oy37e5/comment/h7s7w62/
-/// https://rocket.rs/v0.5-rc/guide/responses/#custom-responders
+// https://www.reddit.com/r/rust/comments/oy37e5/comment/h7s7w62/
+// https://rocket.rs/v0.5-rc/guide/responses/#custom-responders
 #[derive(Responder)]
 struct MyResponder<T> {
     inner: T,
@@ -112,16 +114,18 @@ impl<'r, 'o: 'r, T: Responder<'r, 'o>> MyResponder<T> {
     }
 }
 
-/// The "/auth/login" page has no content of its own. This preliminary version implements
-/// RFC 7617 Basic Authentication for login with username "aladdin" and password
-/// "opensesame". If successful, the user is redirected to the home page "/".
-///
-/// The plan is to implement RFC 7616 Digest Access Authentication with the "domain"
-/// parameter restricted to "/auth/*" and rely on rocket-session-store and the database
-/// to manage sessions and carry user authentication over to the rest of the website.
+// The "/login/auth" page has no content of its own. This preliminary version implements
+// RFC 7617 Basic Authentication for login with username "aladdin" and password
+// "opensesame". If successful, the user is redirected to the home page "/".
+// Basic Authentication strips off the portion of the URI after the final '/' to
+// obtain the root of the protection domain for reusing credentials.
+//
+// The plan is to implement RFC 7616 Digest Access Authentication with the "domain"
+// parameter restricted to "/login/" and rely on rocket-session-store and the database
+// to manage sessions and carry user authentication over to the rest of the website.
 
-#[get("/auth/login")]
-async fn login(session: Session<'_, String>, db: Connection<Db>,
+#[get("/login/auth")]
+async fn login_auth(session: Session<'_, String>, db: Connection<Db>,
 			   http_request_headers: HttpRequestHeaders<'_>)
 		-> SessionResult<MyResponder<(Status, ())> > {
 	let session_id: String = session_init(session).await?;

@@ -7,7 +7,7 @@ Configure `ROCKET_SECRET_KEY` and `ROCKET_DATABASES` in the file `./.env`
 
 ```
 ROCKET_SECRET_KEY = qjsVtkPNv7903JcCwbSxNl68cMT9F8D6h834RoDNSSI=
-ROCKET_DATABASES = '{farmgate={url="postgres://user:password@localhost/database",idle_timeout=120}}'
+ROCKET_DATABASES = '{PostgreSQL={url="postgres://user:password@localhost/database",idle_timeout=120}}'
 ```
 The variable `ROCKET_SECRET_KEY` may be set to the output of the
 following command to generate a new secret key for encrypting session cookies
