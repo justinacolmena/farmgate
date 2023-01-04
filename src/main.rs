@@ -59,8 +59,8 @@ async fn index(session: Session<'_, String>, db: Connection<Db>,
 	let mut database_error = String::new();
 
 	let Ok(rows) = db
-        .query("SELECT $1, $2, $3, NOW()",
-			&[&&session_id, &"hello", &"world"]).await
+        .query("SELECT $3, $2, $1, NOW()",
+			&[&"world", &"hello", &&session_id]).await
 	.or_else(|e: tokio_postgres::error::Error|
 			{database_error += &e.to_string(); Err(e)})
 	else {return Ok((Status::new(500), (ContentType::Plain,
@@ -72,9 +72,9 @@ async fn index(session: Session<'_, String>, db: Connection<Db>,
 		for row in rows {
 			r += &format!("{}<br>\n{} {} {}<br>\n<a href=\"/login/auth\">login</a>: \
 			try username “aladdin” with password “opensesame”",
-				row.try_get::<_,String>(0)?,
-				row.try_get::<_,String>(1)?,
-				row.try_get::<_,String>(2)?,
+				row.try_get::<_,&str>(0)?,
+				row.try_get::<_,&str>(1)?,
+				row.try_get::<_,&str>(2)?,
 				DateTime::<offset::Utc>::from(row.try_get::<_,SystemTime>(3)?)
 			)}
 		Ok((Status::Ok,(ContentType::HTML, r)))
