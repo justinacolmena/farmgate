@@ -13,6 +13,7 @@ dotenvy = "0.15.6"
 comrak = "0.15.0"
 bbscope = "0.0.6"
 rocket = { version = "0.5.0-rc.2", features = ["secrets"] }
+secrecy = {version = "0.8.0", features = ["alloc"] }
 rocket-session-store = "0.2.0"
 tokio = { version = "1.23.0", features = ["full"] }
 tokio-postgres = "0.7.7"

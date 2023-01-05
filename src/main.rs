@@ -7,6 +7,7 @@ use rocket::{get, routes, Request};
 use rocket::http::{Header, Status, ContentType, HeaderMap};
 use rocket::request::{FromRequest, Outcome};
 use rocket::response::Responder;
+use secrecy::{Secret, SecretString, ExposeSecret};
 use rocket_session_store::{memory::MemoryStore, SessionStore,
 	SessionResult, Session, CookieConfig};
 use rocket_db_pools::{deadpool_postgres, Database, Connection};
@@ -26,8 +27,8 @@ use postgres_types::{ToSql, FromSql};
 async fn main() -> Result<(), rocket::Error> {
 	let _path_to_dot_env = dotenv().ok();
 
-	let memory_store: MemoryStore::<String> = MemoryStore::default();
-	let store: SessionStore<String> = SessionStore {
+	let memory_store: MemoryStore::<SecretString> = MemoryStore::default();
+	let store: SessionStore<SecretString> = SessionStore {
 		store: Box::new(memory_store),
 		name: "token".into(),
 		duration: tokio::time::Duration::from_secs(3600),
@@ -41,26 +42,25 @@ async fn main() -> Result<(), rocket::Error> {
 	Ok(())
 }
 
-async fn session_init(session: Session<'_, String>) -> SessionResult<String>
+async fn session_init(session: Session<'_, SecretString>) -> SessionResult<SecretString>
 {
-	let session_id: String = session.get().await.unwrap_or_default()
-		.and_then(|name| if name.len() == 54 && name.bytes()
+	let session_id: SecretString = session.get().await.unwrap_or_default()
+		.and_then(|name| if name.expose_secret().len() == 54 && name.expose_secret().bytes()
 		.all(|x| x.is_ascii_alphanumeric()) {Some(name)} else {None})
-		.unwrap_or_else(||Alphanumeric.sample_string(&mut rand::thread_rng(), 54));
+		.unwrap_or_else(||Secret::new(Alphanumeric.sample_string(&mut rand::thread_rng(), 54)));
 	session.set(session_id.clone()).await.and_then(|()|Ok(session_id))
 }
 
 
 #[get("/")]
-async fn index(session: Session<'_, String>, db: Connection<Db>,
+async fn index(session: Session<'_, SecretString>, db: Connection<Db>,
 			   http_request_headers: HttpRequestHeaders<'_>)
 		-> SessionResult<(Status, (ContentType, String))> {
-	let session_id: String = session_init(session).await?;
+	let session_id: SecretString = session_init(session).await?;
 	let mut database_error = String::new();
 
-	let Ok(rows) = db
-        .query("SELECT $3, $2, $1, NOW()",
-			&[&"world", &"hello", &&session_id]).await
+	let Ok(rows) = db.query("SELECT $3, $2, $1, NOW()",
+			&[&"world", &"hello", &&session_id.expose_secret()]).await
 	.or_else(|e: tokio_postgres::error::Error|
 			{database_error += &e.to_string(); Err(e)})
 	else {return Ok((Status::new(500), (ContentType::Plain,
@@ -125,10 +125,10 @@ impl<'r, 'o: 'r, T: Responder<'r, 'o>> MyResponder<T> {
 // to manage sessions and carry user authentication over to the rest of the website.
 
 #[get("/login/auth")]
-async fn login_auth(session: Session<'_, String>, db: Connection<Db>,
+async fn login_auth(session: Session<'_, SecretString>, db: Connection<Db>,
 			   http_request_headers: HttpRequestHeaders<'_>)
 		-> SessionResult<MyResponder<(Status, ())> > {
-	let session_id: String = session_init(session).await?;
+	let session_id: SecretString = session_init(session).await?;
 
 	let auth = http_request_headers.0.get_one("Authorization").unwrap_or("");
     let auth64 = if auth.len() > 6 && auth.starts_with("Basic") { auth[5..].trim() } else {""};
