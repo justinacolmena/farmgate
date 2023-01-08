@@ -11,7 +11,7 @@ base64 = "0.20.0"
 chrono = { version = "0.4.23", features = ["std"] }
 dotenvy = "0.15.6"
 comrak = "0.15.0"
-bbscope = "0.0.6"
+bbscope = "0.1.4"
 rocket = { version = "0.5.0-rc.2", features = ["secrets"] }
 secrecy = {version = "0.8.0", features = ["alloc"] }
 rocket-session-store = "0.2.0"

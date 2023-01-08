@@ -43,20 +43,19 @@ async fn main() -> Result<(), rocket::Error> {
 }
 
 
-async fn session_init(session: Session<'_, HashMap<String,SecretString>>)
-		-> SessionResult<HashMap<String,SecretString>>
-{
-	let epsilon: SecretString = Secret::new(String::new());
-	let mut sh: HashMap<String,SecretString> = session.get().await.ok()
-		.unwrap_or(Some(HashMap::new())).unwrap_or(HashMap::new());
-	let ss: &SecretString = sh.get("session_secret").clone().unwrap_or(&epsilon);
-	if ss.expose_secret().len() != 54
-	|| ! ss.expose_secret().bytes().all(|x| x.is_ascii_alphanumeric())
-	{
-		sh.insert("session_secret".to_string(),
-			Secret::new(Alphanumeric.sample_string(&mut rand::thread_rng(), 54)));
+async fn session_init(session: Session<'_, HashMap<String,SecretString>>, key: &str, len: usize)
+		-> SessionResult<HashMap<String,SecretString>> {
+	let mut sh: HashMap<String,SecretString> = session.get().await?
+		.or_else(||Some(HashMap::new())).unwrap_or_else(||HashMap::new());
+	if sh.get(key).and_then(|val|Some(val.expose_secret()))
+		.and_then(|ss|Some(ss.len()==len && ss.bytes().all(|x|x.is_ascii_alphanumeric())))
+		.unwrap_or(false) { session.touch().await? }
+	else {
+		sh.insert(key.to_string(),
+			Secret::new(Alphanumeric.sample_string(&mut rand::thread_rng(), len)));
+		session.set(sh.clone()).await?
 	}
-	session.set(sh.clone()).await.and_then(|()|Ok(sh))
+	Ok(sh)
 }
 
 
@@ -65,18 +64,20 @@ async fn index(session: Session<'_, HashMap<String,SecretString>>,
 			db: Connection<Db>, http_request_headers: HttpRequestHeaders<'_>)
 		-> SessionResult<(Status, (ContentType, String))>
 {
-	let epsilon: SecretString = Secret::new(String::new());
-	let mut session_vars: HashMap<String,SecretString> = session_init(session).await?;
-	let session_id: &SecretString = session_vars.get("session_secret").unwrap_or(&epsilon);
+	let mut session_vars = session_init(session, "secret_key", 54).await?;
+	// Don't forget "session.set(session_vars).await?" to finalize any modifications!
+	let secret_key: SecretString = if let Some(key) = session_vars.get("secret_key")
+	{(*key).clone()} else {Secret::new(String::new())};
+	// Either a cloned copy of the secret key string or a new secret empty string.
 
 	let mut database_error = String::new();
 
 	let Ok(rows) = db.query("SELECT $3, $2, $1, NOW()",
-			&[&"world", &"hello", &session_id.expose_secret()]).await
+			&[&"world", &"hello", &secret_key.expose_secret()]).await
 	.or_else(|e: tokio_postgres::error::Error|
 			{database_error += &e.to_string(); Err(e)})
 	else {return Ok((Status::new(500), (ContentType::Plain,
-		format!("database query failed: {}", database_error))))};
+		format!("database query failed: {}\n", database_error))))};
 
 	// use non-panic method & trap errors with "?" operator inside closure
     (move |rows:Vec<tokio_postgres::row::Row>| async move {
@@ -93,7 +94,7 @@ async fn index(session: Session<'_, HashMap<String,SecretString>>,
 	})(rows).await // call the closure on "rows" returned from database
 	.or_else(|e: tokio_postgres::error::Error|
 		Ok((Status::new(500), (ContentType::Plain,
-		format!("failed to get results from database query: {}",
+		format!("failed to get results from database query: {}\n",
 			&e.to_string())))))
 }
 
