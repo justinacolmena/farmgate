@@ -14,7 +14,7 @@ comrak = "0.15.0"
 bbscope = "0.1.4"
 rocket = { version = "0.5.0-rc.2", features = ["secrets"] }
 secrecy = {version = "0.8.0", features = ["alloc"] }
-rocket-session-store = "0.2.0"
+rocket-session-store = { version = "0.2.1", features = ["redis"], git="https://github.com/Aurora2500/rocket-session-store.git" }
 tokio = { version = "1.23.0", features = ["full"] }
 tokio-postgres = "0.7.7"
 postgres-types = { version = "0.2.4", features = ["derive"] }
