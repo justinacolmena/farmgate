@@ -22,3 +22,4 @@ $ head -c32 /dev/random | base64
  * pages for signup, logout, user preferences, profile
  * actions for view, edit, post, update, history, delete
  * forms, views, html, css, styles, skins, navigation help
+ * Bring diesel onboard: https://crates.io/crates/diesel
